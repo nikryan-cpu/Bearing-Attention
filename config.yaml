@@ -1,0 +1,29 @@
+# Relative paths are resolved against the folder containing this file.
+paths:
+  archives: data/archives
+  raw: data/raw
+  processed: data/processed
+  models: models
+  results: results
+
+datasets:
+  femto:
+    # PHM Society mirror of the NASA Prognostics Data Repository, data set 10
+    url: https://phm-datasets.s3.amazonaws.com/NASA/10.+FEMTO+Bearing.zip
+    archive: FEMTO_Bearing.zip
+    archive_bytes: 1157035288
+    inner_archive: FEMTOBearingDataSet.zip
+    sampling_rate_hz: 25600
+    snapshot_length: 2560
+    snapshot_interval_s: 10
+
+  ims:
+    # Same mirror, data set 4
+    url: https://phm-datasets.s3.amazonaws.com/NASA/4.+Bearings.zip
+    archive: IMS_Bearings.zip
+    archive_bytes: 1075597174
+    inner_archive: IMS.7z
+    test: 2nd_test
+    sampling_rate_hz: 20000
+    snapshot_length: 20480
+    snapshot_interval_s: 600
