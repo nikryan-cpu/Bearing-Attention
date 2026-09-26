@@ -114,8 +114,10 @@ def extract_zip(archive, dest_dir, keep=None):
         members = [name for name in zf.namelist() if keep is None or keep(name)]
         zf.extractall(dest_dir, members)
     for name in members:
-        if name.lower().endswith(".zip"):
-            nested = Path(dest_dir) / name
+        nested = Path(dest_dir) / name
+        # FEMTO stores Training_set.zip twice (once more inside Test_set.zip),
+        # so a nested zip may already have been unpacked and removed
+        if name.lower().endswith(".zip") and nested.exists():
             extract_zip(nested, nested.parent)
             nested.unlink()
     return members

@@ -79,6 +79,18 @@ def test_extract_member_then_nested_zips(tmp_path):
     assert not (out / "Full_Test_Set.zip").exists()
 
 
+def test_same_nested_zip_twice(tmp_path):
+    training = _zip_bytes({"Learning_set/Bearing1_1/acc_00001.csv": "1"})
+    test = _zip_bytes({"Test_set/Bearing1_3/acc_00001.csv": "2", "Training_set.zip": training})
+    archive = tmp_path / "inner.zip"
+    archive.write_bytes(_zip_bytes({"Test_set.zip": test, "Training_set.zip": training}))
+
+    dl.extract_zip(archive, tmp_path / "raw")
+    assert (tmp_path / "raw/Learning_set/Bearing1_1/acc_00001.csv").read_text() == "1"
+    assert (tmp_path / "raw/Test_set/Bearing1_3/acc_00001.csv").read_text() == "2"
+    assert not list((tmp_path / "raw").glob("*.zip"))
+
+
 def test_extract_member_rejects_ambiguous_name(tmp_path):
     archive = tmp_path / "a.zip"
     archive.write_bytes(_zip_bytes({"x/data.zip": b"1", "y/data.zip": b"2"}))
