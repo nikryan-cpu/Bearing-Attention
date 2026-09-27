@@ -16,7 +16,61 @@ def windows(series, length):
     return np.lib.stride_tricks.sliding_window_view(series, length, axis=0).transpose(0, 2, 1)
 
 
-class ForecastDetector:
+class ErrorScore:
+    """Turns forecasts into a per-snapshot anomaly score. Subclasses provide
+    `forecast(z)`, `window`, `horizon`, `feature_names` and `channel_scale`."""
+
+    def score(self, z, stop=None):
+        """Log of the mean normalized squared error of every snapshot over all forecasts
+        that predicted it. Uses only earlier snapshots, so it can run online; NaN until
+        the first full window.
+
+        The errors span several orders of magnitude (a transient can be a thousand
+        times the typical error), so the log is taken; alarms only depend on the order
+        of the scores, but on this scale the evaluation's clip never reaches a threshold.
+        """
+        z = z[:stop]
+        n = len(z)
+        scores = np.full(n, np.nan)
+        if n <= self.window:
+            return scores
+        forecasts = self.forecast(z)
+        total, count = np.zeros(n), np.zeros(n)
+        for h in range(self.horizon):
+            t = np.arange(self.window + h, n)
+            error = ((forecasts[: len(t), h] - z[t]) ** 2 / self.channel_scale).mean(axis=1)
+            np.add.at(total, t, error)
+            np.add.at(count, t, 1)
+        seen = count > 0
+        scores[seen] = np.log(total[seen] / count[seen])
+        return scores
+
+    def for_features(self, feature_names):
+        """The same model for another sensor layout (e.g. one accelerometer instead of
+        two). Nothing is refitted: each channel keeps the healthy error scale learned
+        for its feature, averaged over the training axes."""
+        by_feature = {}
+        for name, scale in zip(self.feature_names, self.channel_scale):
+            by_feature.setdefault(name.split("_", 1)[1], []).append(scale)
+        adapted = copy.copy(self)
+        adapted.feature_names = list(feature_names)
+        adapted.channel_scale = np.array([np.mean(by_feature[n.split("_", 1)[1]]) for n in feature_names])
+        return adapted
+
+    def healthy_channel_scale(self, healthy):
+        """Median squared forecast error of every channel over the healthy windows."""
+        errors = []
+        for h in healthy:
+            rows = len(h) - self.window - self.horizon + 1
+            if rows <= 0:
+                continue
+            forecasts = self.forecast(h)
+            targets = windows(h[self.window:], self.horizon)[:rows]
+            errors.append(((forecasts[:rows] - targets) ** 2).reshape(-1, h.shape[1]))
+        return np.median(np.concatenate(errors), axis=0) + 1e-6
+
+
+class ForecastDetector(ErrorScore):
     def __init__(self, name, variant, model_cfg):
         self.name = name
         self.variant = dict(variant)
@@ -78,43 +132,6 @@ class ForecastDetector:
         if not return_attention:
             return torch.cat(outputs).numpy()
         return torch.cat([f for f, _ in outputs]).numpy(), torch.cat([a for _, a in outputs]).numpy()
-
-    def score(self, z, stop=None):
-        """Log of the mean normalized squared error of every snapshot over all forecasts
-        that predicted it. Uses only earlier snapshots, so it can run online; NaN until
-        the first full window.
-
-        The errors span several orders of magnitude (a transient can be a thousand
-        times the typical error), so the log is taken; alarms only depend on the order
-        of the scores, but on this scale the evaluation's clip never reaches a threshold.
-        """
-        z = z[:stop]
-        n = len(z)
-        scores = np.full(n, np.nan)
-        if n <= self.window:
-            return scores
-        forecasts = self.forecast(z)
-        total, count = np.zeros(n), np.zeros(n)
-        for h in range(self.horizon):
-            t = np.arange(self.window + h, n)
-            error = ((forecasts[: len(t), h] - z[t]) ** 2 / self.channel_scale).mean(axis=1)
-            np.add.at(total, t, error)
-            np.add.at(count, t, 1)
-        seen = count > 0
-        scores[seen] = np.log(total[seen] / count[seen])
-        return scores
-
-    def for_features(self, feature_names):
-        """The same model for another sensor layout (e.g. one accelerometer instead of
-        two). Nothing is refitted: each channel keeps the healthy error scale learned
-        for its feature, averaged over the training axes."""
-        by_feature = {}
-        for name, scale in zip(self.feature_names, self.channel_scale):
-            by_feature.setdefault(name.split("_", 1)[1], []).append(scale)
-        adapted = copy.copy(self)
-        adapted.feature_names = list(feature_names)
-        adapted.channel_scale = np.array([np.mean(by_feature[n.split("_", 1)[1]]) for n in feature_names])
-        return adapted
 
     def save(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)

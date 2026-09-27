@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from bearing_attention import baselines, evaluation, features, forecaster
+from bearing_attention.chronos_detector import ChronosDetector
 from bearing_attention.config import load_config
 
 log = logging.getLogger("evaluate")
@@ -66,10 +67,14 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # model downloads from Hugging Face
     cfg = load_config(args.config)
     detectors = {**baselines.DETECTORS, **forecaster.variants(cfg)}
     detectors["rms_or_transformer"] = lambda: forecaster.LevelOrSurprise(
         "rms_or_transformer", baselines.DETECTORS["rms"](), detectors["transformer_w128_p16"]())
+    ch = cfg["chronos"]
+    detectors["chronos_bolt_small"] = lambda: ChronosDetector(
+        "chronos_bolt_small", ch["window"], ch["horizon"], ch["model"], ch["batch_size"])
     unknown = set(args.methods) - set(detectors)
     if unknown:
         parser.error(f"unknown methods {sorted(unknown)}; choose from {sorted(detectors)}")

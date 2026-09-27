@@ -18,6 +18,7 @@ METHOD_LABELS = {
     "transformer_w64_p8": "transformer 64/8",
     "transformer_w32_p4": "transformer 32/4",
     "rms_or_transformer": "RMS or transformer (post hoc)",
+    "chronos_bolt_small": "Chronos-Bolt small (zero-shot)",
 }
 
 DIVERGING = LinearSegmentedColormap.from_list(

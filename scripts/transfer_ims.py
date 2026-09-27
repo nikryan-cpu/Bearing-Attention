@@ -13,6 +13,7 @@ import pandas as pd
 
 from bearing_attention import evaluation, features
 from bearing_attention.baselines import ECODDetector, FeatureThreshold
+from bearing_attention.chronos_detector import ChronosDetector
 from bearing_attention.config import load_config
 from bearing_attention.forecaster import ForecastDetector, LevelOrSurprise
 from bearing_attention.plotting import AQUA, BLUE, INK_SECONDARY, METHOD_LABELS, MUTED, ORANGE, SHADE, apply_style, plt
@@ -46,6 +47,9 @@ def detectors_from_femto(cfg, feature_names):
         detectors[f"transformer_{name}"] = ForecastDetector.load(saved).for_features(feature_names)
     detectors["rms_or_transformer"] = LevelOrSurprise(
         "rms_or_transformer", rms, detectors["transformer_w128_p16"]).scale_parts(healthy)
+    ch = cfg["chronos"]
+    detectors["chronos_bolt_small"] = ChronosDetector(
+        "chronos_bolt_small", ch["window"], ch["horizon"], ch["model"], ch["batch_size"]).fit(healthy, feature_names)
     return detectors
 
 
@@ -132,6 +136,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # model downloads from Hugging Face
     apply_style()
     cfg = load_config(args.config)
     test = cfg["datasets"]["ims"]["test"]

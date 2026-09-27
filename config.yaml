@@ -84,6 +84,13 @@ transformer:
     weight_decay: 0.0001
     seed: 0
 
+chronos:
+  # Zero-shot comparison, same window and horizon as the transformer 128/16
+  model: amazon/chronos-bolt-small
+  window: 128
+  horizon: 16
+  batch_size: 1024
+
 demo:
   # Only derived data goes into app/data: the raw recordings may not be redistributed
   femto_bearings: [Bearing1_1, Bearing1_3, Bearing2_2, Bearing2_5, Bearing2_7, Bearing3_2]

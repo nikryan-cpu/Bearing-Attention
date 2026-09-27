@@ -6,7 +6,7 @@ Demo: https://bearing-attention.streamlit.app
 
 I trained a small PatchTST-style transformer to forecast vibration features of healthy bearings and used its forecast error as an anomaly score. I compared it with an RMS threshold, a kurtosis threshold and ECOD on the FEMTO/PRONOSTIA run-to-failure data, with every method set to the same false-alarm rate, and then applied the FEMTO-trained model to the NASA IMS data without retraining.
 
-The short answer is no, not on this data. At a strict false-alarm rate (1 % of healthy time in alarm) the transformer catches 4 of 16 FEMTO failures before the end, against 12 for RMS and 13 for ECOD. At 5 % RMS, ECOD and the transformer catch 15 or 16 of the 16 failures, a few minutes ahead, and the transformer produces fewer alarms that switch themselves off again than ECOD. It reacts to changes in how a bearing vibrates rather than to slow growth, which helps on some bearings and hurts on others. On IMS the FEMTO model finds the failure about two days ahead; RMS and ECOD find it about three days ahead.
+The short answer is no, not on this data. At a strict false-alarm rate (1 % of healthy time in alarm) the transformer catches 4 of 16 FEMTO failures before the end, against 12 for RMS and 13 for ECOD. At 5 % RMS, ECOD and the transformer catch 15 or 16 of the 16 failures, a few minutes ahead, and the transformer produces fewer alarms that switch themselves off again than ECOD. It reacts to changes in how a bearing vibrates rather than to slow growth, which helps on some bearings and hurts on others. On IMS the FEMTO model finds the failure about two days ahead; RMS and ECOD find it about three days ahead. A pretrained Chronos-Bolt model used without any training on bearings behaves much like my small transformer, only noisier, so the limit seems to be the forecast-error approach itself rather than the size of the model.
 
 ![FEMTO comparison](results/figures/femto_comparison.png)
 
@@ -82,6 +82,7 @@ Median lead time over the detected bearings; "cleared" counts alarms after the h
 | transformer 64/8 | 4/16, 3.8 min | 16/16, 5.2 min | 32 | 0.81 |
 | transformer 32/4 | 5/16, 1.5 min | 16/16, 7.4 min | 58 | 0.81 |
 | RMS or transformer (added after the first results) | 10/16, 3.3 min | 16/16, 7.5 min | 26 | 0.83 |
+| Chronos-Bolt small, zero-shot | 5/16, 1.5 min | 16/16, 8.0 min | 93 | 0.79 |
 
 What I read from it:
 
@@ -106,6 +107,7 @@ All detectors are built on FEMTO only and applied to IMS test 2 without retraini
 | transformer 64/8 | 56.0 | 82.5 | 5 |
 | transformer 32/4 | 46.7 | 74.2 | 2 |
 | RMS or transformer | 75.8 | 96.3 | 4 |
+| Chronos-Bolt small, zero-shot | 46.2 | 74.2 | 2 |
 
 (bearing 1, 1 % false alarms)
 
@@ -114,6 +116,10 @@ All detectors are built on FEMTO only and applied to IMS test 2 without retraini
 Every method finds the failure of bearing 1 days ahead, because on IMS the damage grows over days rather than minutes. RMS and ECOD hold their alarm from the moment RMS starts rising (about day 3.65). The transformer reacts at the same time but its alarm clears on the plateaus; its lasting alarm only starts with the jump at day 4.83. It also has a few more short alarms. At the end of the test bearings 2 to 4 are in alarm for every method; bearing 4 steps up at the exact moment bearing 1 does, so at least part of it is vibration from bearing 1 carried through the shaft. I do not count those as false alarms but I cannot tell them apart from wear of those bearings either.
 
 Windows are defined in snapshots, so they mean very different physical times: 128 snapshots are 21 min on FEMTO and 21 h on IMS, the smoothing covers 50 s or 50 min. In snapshots the two datasets are comparable (FEMTO lives of 230 to 2803 snapshots, the IMS test 982, of which bearing 1 spends about 460 degrading), so the model sees a similar share of a life. What one step means is not the same: consecutive FEMTO snapshots mostly differ by estimation noise (0.1 s of signal), consecutive IMS snapshots by what happened in 10 minutes of running, with less noise (1 s of signal). The per-bearing normalization puts both on the same scale, not on the same physics. Other differences: ball bearings against double-row roller bearings, 1500 to 1800 rpm against 2000 rpm, 4 to 5 kN against about 27 kN, different sensors and sampling rates, two accelerometers against one, four bearings sharing a shaft, and a single IMS test with a single failure. The transfer works in the sense that the model finds the failure, but it is one example.
+
+### A pretrained forecaster for comparison
+
+To see whether the weak spots come from my small model or from the approach, I ran Chronos-Bolt small (a 48M-parameter forecaster pretrained by Amazon on a large collection of public time series, from the `chronos-forecasting` package, Apache-2.0) through exactly the same protocol, zero-shot: same 128-snapshot window and 16-snapshot horizon, the median forecast in place of mine, and only the typical healthy error of each feature measured on the training bearings. On FEMTO it detects 5 of 16 bearings at 1 % (mine 4) and all 16 at 5 % with a median lead of 8.0 min (mine 5.8), but with 93 alarms that cleared again against 27. On IMS its lasting alarm starts 46.2 h before the end (mine 47.7). A model more than 500 times larger that has seen far more data behaves much the same, so the limits above belong to "anomaly = forecast error" on these features, not to the size or the training data of the network. My model, trained in a minute on healthy bearings only, is the calmer of the two.
 
 ### Things I got wrong on the way
 
@@ -148,9 +154,10 @@ python scripts/plot_features.py              # sanity-check figures
 python scripts/evaluate.py rms kurtosis ecod                                         # ~5 min
 python scripts/evaluate.py transformer_w128_p16 transformer_w64_p8 transformer_w32_p4 # ~50 min on 6 CPU cores
 python scripts/evaluate.py rms_or_transformer                                         # ~12 min
+python scripts/evaluate.py chronos_bolt_small                                         # ~35 min, downloads ~190 MB
 python scripts/plot_comparison.py
 python scripts/train_forecaster.py           # models trained on all healthy FEMTO data, used for IMS
-python scripts/transfer_ims.py               # ~1 min
+python scripts/transfer_ims.py               # ~7 min with Chronos-Bolt
 
 python scripts/export_demo.py                # app/data
 python -m pytest -q
@@ -186,6 +193,7 @@ tests/                      pytest; tests that need the downloaded data are skip
 ## References
 
 - Y. Nie, N. H. Nguyen, P. Sinthong, J. Kalagnanam. A Time Series is Worth 64 Words: Long-term Forecasting with Transformers. ICLR 2023. The idea behind the model; the code here is my own.
+- A. F. Ansari et al. Chronos: Learning the Language of Time Series. TMLR, 2024. Chronos-Bolt comes from the same authors' `chronos-forecasting` package (Apache-2.0).
 - Z. Li, Y. Zhao, X. Hu, N. Botta, C. Ionescu, G. H. Chen. ECOD: Unsupervised Outlier Detection Using Empirical Cumulative Distribution Functions. IEEE TKDE, 2022.
 - Y. Zhao, Z. Nasrullah, Z. Li. PyOD: A Python Toolbox for Scalable Outlier Detection. JMLR, 2019 (BSD 2-Clause license).
 - IEEE PHM 2012 Prognostic Challenge: Outline, Experiments, Scoring of Results, Winners (operating conditions, bearing geometry and actual RULs of the test bearings).
