@@ -60,6 +60,25 @@ evaluation:
   # Only for ROC/PR: "the last 10 % of a life is worn" is a convention, not a label
   wear_fraction: 0.1
 
+transformer:
+  # window / horizon in snapshots. On FEMTO 128 snapshots are 21 min of history,
+  # on IMS 21 h. Patches tile the window: (window - patch) % stride == 0.
+  variants:
+    w128_p16: {window: 128, patch: 16, stride: 8, horizon: 16}
+    w64_p8: {window: 64, patch: 8, stride: 4, horizon: 8}
+    w32_p4: {window: 32, patch: 4, stride: 2, horizon: 8}
+  model:
+    d_model: 64
+    n_heads: 4
+    n_layers: 2
+    d_ff: 128
+    dropout: 0.1
+    epochs: 5
+    batch_size: 64
+    lr: 0.001
+    weight_decay: 0.0001
+    seed: 0
+
 alarm:
   # All in snapshots: 10 s each on FEMTO, 10 min on IMS
   smooth: 5

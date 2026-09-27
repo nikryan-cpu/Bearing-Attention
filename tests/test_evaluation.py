@@ -78,3 +78,9 @@ def test_conditional_auc_of_a_perfect_score():
     score = (np.arange(n) >= 900).astype(float)
     auc, ap = ev.conditional_auc([score], 0.1, cfg["normalization"]["baseline_snapshots"], cfg)
     assert auc == 1 and ap == 1
+
+
+def test_alarm_share_ignores_snapshots_without_a_score():
+    series = [np.array([np.nan] * 6 + [5, 5, 5, 0])]
+    # raised at the third exceedance, still on at the next normal snapshot
+    assert ev.alarm_fraction(series, 1, RULE) == pytest.approx(2 / 4)

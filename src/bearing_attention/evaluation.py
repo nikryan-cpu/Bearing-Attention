@@ -79,7 +79,8 @@ def alarm_onsets(states):
 
 
 def alarm_fraction(series, threshold, rule):
-    total = sum(len(s) for s in series)
+    """Share of the scored (non-NaN) snapshots that are in alarm."""
+    total = sum(np.isfinite(s).sum() for s in series)
     return sum(alarm_states(s, threshold, rule).sum() for s in series) / total
 
 
@@ -190,7 +191,7 @@ def run_protocol(make_detector, records, feature_names, cfg, log=None):
         for b in test:
             raw = detector.score(z[b])
             results[b] = {"raw": raw, "score": process(raw, reference, rule),
-                          "thresholds": thresholds, "group": g}
+                          "thresholds": thresholds, "group": g, "detector": detector}
         if log:
             log(f"group {g}: tested {', '.join(test)}; thresholds "
                 + ", ".join(f"{far:.1%}: {t:.2f}" for far, t in thresholds.items()))
