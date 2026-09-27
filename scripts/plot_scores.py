@@ -8,7 +8,7 @@ from matplotlib.patches import Patch
 
 from bearing_attention import evaluation, features
 from bearing_attention.config import load_config
-from bearing_attention.plotting import BLUE, INK_SECONDARY, MUTED, SHADE, apply_style, plt
+from bearing_attention.plotting import BLUE, INK_SECONDARY, METHOD_LABELS, SHADE, apply_style, plt
 
 ALARM = "#f6c9c9"
 TICKS = [-10, 0, 5, 10, 20, 50, 100]
@@ -47,7 +47,7 @@ def main():
             ax.set_yticks(TICKS, [str(t) for t in TICKS])
             ax.set_ylim(-12, 110)
             if row == 0:
-                ax.set_title(method, loc="left", fontsize=10)
+                ax.set_title(METHOD_LABELS.get(method, method), loc="left", fontsize=10)
             if col == 0:
                 ax.set_ylabel(f"{bearing}\nscore")
             if row == len(args.bearings) - 1:

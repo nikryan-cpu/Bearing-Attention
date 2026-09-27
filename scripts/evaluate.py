@@ -68,6 +68,8 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     cfg = load_config(args.config)
     detectors = {**baselines.DETECTORS, **forecaster.variants(cfg)}
+    detectors["rms_or_transformer"] = lambda: forecaster.LevelOrSurprise(
+        "rms_or_transformer", baselines.DETECTORS["rms"](), detectors["transformer_w128_p16"]())
     unknown = set(args.methods) - set(detectors)
     if unknown:
         parser.error(f"unknown methods {sorted(unknown)}; choose from {sorted(detectors)}")

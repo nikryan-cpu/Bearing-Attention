@@ -10,6 +10,16 @@ BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 INK, INK_SECONDARY, MUTED = "#0b0b0b", "#52514e", "#898781"
 GRID, AXIS, SURFACE, SHADE = "#e1e0d9", "#c3c2b7", "#fcfcfb", "#f0efec"
 
+METHOD_LABELS = {
+    "rms": "RMS threshold",
+    "kurtosis": "kurtosis threshold",
+    "ecod": "ECOD",
+    "transformer_w128_p16": "transformer 128/16",
+    "transformer_w64_p8": "transformer 64/8",
+    "transformer_w32_p4": "transformer 32/4",
+    "rms_or_transformer": "RMS or transformer (post hoc)",
+}
+
 DIVERGING = LinearSegmentedColormap.from_list(
     "blue_red", ["#1c5cab", "#6da7ec", SHADE, "#ee8f8e", "#c63b3a"]
 )

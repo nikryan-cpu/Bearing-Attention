@@ -121,6 +121,33 @@ class ForecastDetector:
         return detector
 
 
+class LevelOrSurprise:
+    """Added after the first results, not part of the original plan: the larger of the
+    RMS level score and the forecast-error score, each on its own healthy scale.
+    RMS sees slow growth that the forecaster finds predictable; the forecaster sees
+    changes in behaviour that barely move RMS."""
+
+    def __init__(self, name, level, surprise):
+        self.name = name
+        self.parts = [level, surprise]
+
+    def fit(self, healthy, feature_names):
+        self.scales = []
+        for part in self.parts:
+            part.fit(healthy, feature_names)
+            scores = np.concatenate([part.score(h) for h in healthy])
+            scores = scores[np.isfinite(scores)]
+            center = np.median(scores)
+            self.scales.append((center, 1.4826 * np.median(np.abs(scores - center)) + 1e-12))
+        return self
+
+    def score(self, z, stop=None):
+        parts = [(part.score(z, stop) - center) / scale
+                 for part, (center, scale) in zip(self.parts, self.scales)]
+        # before the forecaster's first full window only the RMS part exists
+        return np.fmax(*parts)
+
+
 def variants(cfg):
     """{detector name: factory} for every configured window/patch variant."""
     t = cfg["transformer"]

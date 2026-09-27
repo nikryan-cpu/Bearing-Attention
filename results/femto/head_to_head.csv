@@ -1,0 +1,7 @@
+false_alarm_rate,against,transformer_earlier,same_or_both_missed,transformer_later
+0.01,rms,2,5,9
+0.01,kurtosis,2,13,1
+0.01,ecod,2,3,11
+0.05,rms,5,2,9
+0.05,kurtosis,7,1,8
+0.05,ecod,5,1,10

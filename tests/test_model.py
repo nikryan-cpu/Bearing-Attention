@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from bearing_attention.forecaster import ForecastDetector, windows
+from bearing_attention.forecaster import ForecastDetector, LevelOrSurprise, windows
 from bearing_attention.model import PatchForecaster
 
 SMALL = {"d_model": 16, "n_heads": 2, "n_layers": 1, "d_ff": 32, "dropout": 0.0,
@@ -78,3 +78,28 @@ def test_windows():
     w = windows(np.arange(10).reshape(5, 2), 3)
     assert w.shape == (3, 3, 2)
     assert w[1, :, 0].tolist() == [2, 4, 6]
+
+
+class Constant:
+    """Stand-in detector whose score is one column of z."""
+
+    def __init__(self, column, warm_up=0):
+        self.column, self.warm_up = column, warm_up
+
+    def fit(self, healthy, feature_names):
+        return self
+
+    def score(self, z, stop=None):
+        s = z[:stop, self.column].astype(float)
+        s[: self.warm_up] = np.nan
+        return s
+
+
+def test_level_or_surprise_takes_the_larger_standardized_part():
+    rng = np.random.default_rng(0)
+    healthy = [np.column_stack([rng.normal(0, 1, 5000), rng.normal(10, 2, 5000)])]
+    detector = LevelOrSurprise("h", Constant(0), Constant(1, warm_up=3)).fit(healthy, ["a", "b"])
+    z = np.array([[5.0, 10.0]] * 3 + [[0.0, 30.0]])
+    score = detector.score(z)
+    assert score[0] == pytest.approx(5.0, rel=0.1)  # only the level part exists yet
+    assert score[3] == pytest.approx(10.0, rel=0.1)  # (30 - 10) / 2 from the second part
