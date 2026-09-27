@@ -27,3 +27,20 @@ datasets:
     sampling_rate_hz: 20000
     snapshot_length: 20480
     snapshot_interval_s: 600
+
+features:
+  # In Hz, the same for both datasets, and no higher than the IMS Nyquist frequency (10 kHz)
+  bands_hz: [0, 500, 1000, 2000, 3000, 4000, 6000, 8000, 10000]
+  # Wide band above the shaft-related low frequencies, where impacts excite resonances
+  envelope_band_hz: [2000, 9000]
+  envelope_min_hz: 20
+  envelope_max_hz: 1000
+  defect_harmonics: 3
+
+normalization:
+  # Each bearing is z-scored against its own first snapshots (16.7 min on FEMTO,
+  # 16.7 h on IMS). Only data available at that point is used.
+  baseline_snapshots: 100
+  # The first 15 % of each life counts as healthy: used for training and for counting
+  # false alarms. No FEMTO bearing shows a sustained RMS change before 15 % of its life.
+  healthy_fraction: 0.15

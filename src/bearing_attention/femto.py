@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from bearing_attention.features import defect_frequencies
+
 log = logging.getLogger(__name__)
 
 SNAPSHOT_LENGTH = 2560
@@ -14,6 +16,12 @@ SNAPSHOT_INTERVAL_S = 10.0
 
 # Shaft speed (rpm) and radial load (N) per operating condition, Nectoux et al. 2012
 CONDITIONS = {1: (1800, 4000), 2: (1650, 4200), 3: (1500, 5000)}
+
+# Appendix A.1 of the challenge outline document: 13 rolling elements of 3.5 mm on a
+# 25.6 mm mean diameter. No contact angle is given, so 0 deg is used; at the 10 Hz
+# resolution of a 0.1 s snapshot even 15 deg would shift BPFO by less than 1 Hz.
+GEOMETRY = {"n_elements": 13, "element_d": 3.5, "pitch_d": 25.6}
+AXES = ("horiz", "vert")
 
 # Test_set holds the competition records, cut off some time before failure.
 # Full_Test_Set (Validation_Set.zip in the NASA archive) has the same records up to the end.
@@ -66,6 +74,10 @@ class Bearing:
     @property
     def load_n(self):
         return CONDITIONS[self.condition][1]
+
+    @property
+    def defect_hz(self):
+        return defect_frequencies(self.rpm / 60, **GEOMETRY)
 
     def __len__(self):
         return len(self.acc)
