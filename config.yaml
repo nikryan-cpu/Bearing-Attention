@@ -44,3 +44,25 @@ normalization:
   # The first 15 % of each life counts as healthy: used for training and for counting
   # false alarms. No FEMTO bearing shows a sustained RMS change before 15 % of its life.
   healthy_fraction: 0.15
+
+evaluation:
+  # Every FEMTO bearing whose record ends at failure, in four groups that mix the
+  # three operating conditions. Each group is tested once; see evaluation.run_protocol.
+  groups:
+    - [Bearing1_1, Bearing1_6, Bearing2_3, Bearing2_7]
+    - [Bearing1_2, Bearing1_7, Bearing2_4, Bearing3_1]
+    - [Bearing1_3, Bearing2_1, Bearing2_5, Bearing3_2]
+    - [Bearing1_5, Bearing2_2, Bearing2_6, Bearing3_3]
+  # Its end of life is ambiguous (see femto.py), so it only ever contributes healthy training data
+  train_only: [Bearing1_4]
+  # Share of held-out healthy snapshots allowed to be in alarm
+  false_alarm_rates: [0.001, 0.005, 0.01, 0.05]
+  # Only for ROC/PR: "the last 10 % of a life is worn" is a convention, not a label
+  wear_fraction: 0.1
+
+alarm:
+  # All in snapshots: 10 s each on FEMTO, 10 min on IMS
+  smooth: 5
+  raise_after: 3
+  clear_after: 12
+  clip: 100
