@@ -98,10 +98,14 @@ def defect_ratios(x, fs, cfg, defect_hz):
     return np.stack(columns, axis=1)
 
 
-def bearing_features(acc, fs, cfg, axis_names):
-    """Detector features of a whole record. acc: (n_snapshots, n_samples, n_axes)."""
+def bearing_features(acc, fs, cfg, axis_names, chunk=256):
+    """Detector features of a whole record. acc: (n_snapshots, n_samples, n_axes).
+
+    Snapshots are processed `chunk` at a time to bound memory on long IMS snapshots.
+    """
     per_axis = feature_names(cfg["bands_hz"])
-    blocks = [snapshot_features(acc[:, :, i], fs, cfg) for i in range(len(axis_names))]
+    blocks = [np.concatenate([snapshot_features(acc[i:i + chunk, :, a], fs, cfg) for i in range(0, len(acc), chunk)])
+              for a in range(len(axis_names))]
     names = [f"{axis}_{name}" for axis in axis_names for name in per_axis]
     return np.concatenate(blocks, axis=1), names
 

@@ -27,6 +27,11 @@ datasets:
     sampling_rate_hz: 20000
     snapshot_length: 20480
     snapshot_interval_s: 600
+    # Same rule as for FEMTO (the part before any bearing shows a sustained RMS
+    # change, with margin): on test 2 bearing 1 starts to rise at about 52 % of the
+    # test, so the first 40 % (2.7 days) count as healthy. 15 % would leave almost
+    # nothing after the 100-snapshot baseline and the 128-snapshot forecast window.
+    healthy_fraction: 0.4
 
 features:
   # In Hz, the same for both datasets, and no higher than the IMS Nyquist frequency (10 kHz)

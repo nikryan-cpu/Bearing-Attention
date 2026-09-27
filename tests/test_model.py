@@ -103,3 +103,12 @@ def test_level_or_surprise_takes_the_larger_standardized_part():
     score = detector.score(z)
     assert score[0] == pytest.approx(5.0, rel=0.1)  # only the level part exists yet
     assert score[3] == pytest.approx(10.0, rel=0.1)  # (30 - 10) / 2 from the second part
+
+
+def test_for_features_maps_error_scales_by_feature():
+    detector = ForecastDetector("t", VARIANT, {**SMALL, "epochs": 1}).fit([sines(200, 0)], ["horiz_rms", "vert_rms"])
+    detector.channel_scale = np.array([1.0, 3.0])
+    one_sensor = detector.for_features(["ch1_rms"])
+    assert one_sensor.channel_scale.tolist() == [2.0]
+    assert detector.channel_scale.tolist() == [1.0, 3.0]
+    assert np.isfinite(one_sensor.score(sines(100, 1)[:, :1])[40:]).all()

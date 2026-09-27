@@ -1,5 +1,6 @@
 """Anomaly detector built on the patch forecaster: trained to forecast healthy
 feature series, it scores each snapshot by how badly it was forecast."""
+import copy
 import logging
 
 import numpy as np
@@ -103,6 +104,18 @@ class ForecastDetector:
         scores[seen] = np.log(total[seen] / count[seen])
         return scores
 
+    def for_features(self, feature_names):
+        """The same model for another sensor layout (e.g. one accelerometer instead of
+        two). Nothing is refitted: each channel keeps the healthy error scale learned
+        for its feature, averaged over the training axes."""
+        by_feature = {}
+        for name, scale in zip(self.feature_names, self.channel_scale):
+            by_feature.setdefault(name.split("_", 1)[1], []).append(scale)
+        adapted = copy.copy(self)
+        adapted.feature_names = list(feature_names)
+        adapted.channel_scale = np.array([np.mean(by_feature[n.split("_", 1)[1]]) for n in feature_names])
+        return adapted
+
     def save(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"name": self.name, "variant": self.variant, "model_cfg": self.model_cfg,
@@ -132,9 +145,14 @@ class LevelOrSurprise:
         self.parts = [level, surprise]
 
     def fit(self, healthy, feature_names):
-        self.scales = []
         for part in self.parts:
             part.fit(healthy, feature_names)
+        return self.scale_parts(healthy)
+
+    def scale_parts(self, healthy):
+        """Put each already fitted part on the scale of its scores on `healthy`."""
+        self.scales = []
+        for part in self.parts:
             scores = np.concatenate([part.score(h) for h in healthy])
             scores = scores[np.isfinite(scores)]
             center = np.median(scores)
