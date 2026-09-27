@@ -2,6 +2,8 @@
 
 A digital stethoscope for bearings: can a small forecasting transformer, trained only on healthy vibration data, notice bearing wear earlier than simple methods?
 
+Demo: https://bearing-attention.streamlit.app
+
 I trained a small PatchTST-style transformer to forecast vibration features of healthy bearings and used its forecast error as an anomaly score. I compared it with an RMS threshold, a kurtosis threshold and ECOD on the FEMTO/PRONOSTIA run-to-failure data, with every method set to the same false-alarm rate, and then applied the FEMTO-trained model to the NASA IMS data without retraining.
 
 The short answer is no, not on this data. At a strict false-alarm rate (1 % of healthy time in alarm) the transformer catches 4 of 16 FEMTO failures before the end, against 12 for RMS and 13 for ECOD. At 5 % RMS, ECOD and the transformer catch 15 or 16 of the 16 failures, a few minutes ahead, and the transformer produces fewer alarms that switch themselves off again than ECOD. It reacts to changes in how a bearing vibrates rather than to slow growth, which helps on some bearings and hurts on others. On IMS the FEMTO model finds the failure about two days ahead; RMS and ECOD find it about three days ahead.
@@ -157,6 +159,8 @@ python -m pytest -q
 The extra index only makes pip pick the CPU build of PyTorch on Linux. The IMS archive is a .7z holding .rar files, so the download script needs bsdtar (built into Windows 10+ and macOS, `apt install libarchive-tools` on Debian/Ubuntu) or 7-Zip. All settings are in [config.yaml](config.yaml).
 
 ## Demo
+
+The deployed version is at https://bearing-attention.streamlit.app. To run it locally:
 
 ```
 streamlit run app/streamlit_app.py
