@@ -28,8 +28,8 @@ def main():
     paths, rule = cfg["paths"], evaluation.alarm_rule(cfg)
     hours_per_snapshot = cfg["datasets"]["femto"]["snapshot_interval_s"] / 3600
 
-    fig, axes = plt.subplots(len(args.bearings), len(args.methods), figsize=(4 * len(args.methods), 2.4 * len(args.bearings)),
-                             squeeze=False)
+    rows, cols = len(args.bearings), len(args.methods)
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 2.4 * rows), squeeze=False)
     for col, method in enumerate(args.methods):
         scores, names = features.load_records(paths["processed"] / "scores" / f"femto_{method}.npz")
         rate_index = [float(r) for r in names["false_alarm_rates"]].index(args.rate)

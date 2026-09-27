@@ -74,7 +74,8 @@ def export(out, meta, acc_axis, fs, z, feature_names, scores, detector, extra, c
     for method, rec in scores.items():
         arrays[f"score_{method}"] = rec["score"].astype(np.float32)
         arrays[f"thresholds_{method}"] = np.asarray(rec["thresholds"], dtype=np.float32)
-        arrays[f"alarm_{method}"] = np.stack([evaluation.alarm_states(rec["score"], t, rule) for t in rec["thresholds"]])
+        arrays[f"alarm_{method}"] = np.stack(
+            [evaluation.alarm_states(rec["score"], t, rule) for t in rec["thresholds"]])
     meta = {**meta, "methods": list(scores), "false_alarm_rates": cfg["evaluation"]["false_alarm_rates"],
             "forecast_channels": demo["forecast_channels"], "window": detector.window, "horizon": detector.horizon,
             "patch_spans": detector.model.patch_spans(), "n": len(z)}

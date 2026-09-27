@@ -23,7 +23,8 @@ DATA = HERE / "data"
 # DEMO_NO_RAW=1 shows locally what the deployed app shows, without the raw recordings
 LOCAL_RAW = None if os.environ.get("DEMO_NO_RAW") else HERE.parent / "data" / "processed"
 
-BLUE, ORANGE, INK, INK2, MUTED, GRID, SHADE = "#2a78d6", "#eb6834", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#f0efec"
+BLUE, ORANGE, INK, INK2 = "#2a78d6", "#eb6834", "#0b0b0b", "#52514e"
+MUTED, GRID, SHADE = "#898781", "#e1e0d9", "#f0efec"
 GOOD, WARNING, CRITICAL, ALARM_SHADE = "#0ca30c", "#fab219", "#d03b3b", "#f6c9c9"
 METHODS = {"rms": "RMS threshold", "ecod": "ECOD", "transformer_w128_p16": "Transformer (128/16)"}
 CHANNELS = {"rms": "RMS", "kurtosis": "kurtosis", "band_500_1000": "energy 0.5-1 kHz",
