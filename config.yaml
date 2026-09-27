@@ -84,6 +84,17 @@ transformer:
     weight_decay: 0.0001
     seed: 0
 
+demo:
+  # Only derived data goes into app/data: the raw recordings may not be redistributed
+  femto_bearings: [Bearing1_1, Bearing1_3, Bearing2_2, Bearing2_5, Bearing2_7, Bearing3_2]
+  methods: [rms, ecod, transformer_w128_p16]
+  forecaster: w128_p16
+  forecast_channels: [rms, kurtosis, band_500_1000, band_8000_10000, env_modulation, env_peakiness]
+  spectrum_bins: 128
+  spectrum_max_hz: 10000
+  envelope_bin_hz: 10
+  envelope_max_hz: 700
+
 alarm:
   # All in snapshots: 10 s each on FEMTO, 10 min on IMS
   smooth: 5

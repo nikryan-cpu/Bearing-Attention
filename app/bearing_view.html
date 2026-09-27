@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --grid: #e1e0d9;
+    --blue: #2a78d6; --orange: #eb6834; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+    --alarm-shade: #f6c9c9; --healthy-shade: #f0efec;
+  }
+  body { margin: 0; background: var(--surface); color: var(--ink);
+         font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { display: flex; gap: 20px; flex-wrap: wrap; padding: 4px 2px; }
+  .left { width: 340px; }
+  .right { flex: 1; min-width: 320px; }
+  canvas { display: block; }
+  .state { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; font-weight: 600; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; }
+  .note { color: var(--ink2); min-height: 36px; line-height: 1.35; }
+  .controls { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .controls input[type=range] { flex: 1; }
+  button, select { font: inherit; padding: 3px 10px; border: 1px solid var(--grid); border-radius: 4px;
+                   background: #fff; color: var(--ink); cursor: pointer; }
+  .readout { display: grid; grid-template-columns: repeat(4, auto); gap: 2px 18px; margin-bottom: 8px; }
+  .readout span { color: var(--muted); font-size: 12px; }
+  .readout b { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .caption { color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <canvas id="bearing" style="width:340px;height:340px"></canvas>
+    <div class="state"><div class="swatch" id="swatch"></div><div id="stateLabel"></div></div>
+    <div class="note" id="component"></div>
+  </div>
+  <div class="right">
+    <div class="controls">
+      <button id="play">Play</button>
+      <select id="speed" title="snapshots per step">
+        <option value="1">1 snapshot / step</option>
+        <option value="5" selected>5 / step</option>
+        <option value="20">20 / step</option>
+      </select>
+      <input type="range" id="t" min="0" value="0">
+    </div>
+    <div class="readout">
+      <span>since start</span><span>to end of test</span><span>score</span><span>threshold</span>
+      <b id="since"></b><b id="toEnd"></b><b id="score"></b><b id="thr"></b>
+    </div>
+    <div class="caption" id="timelineCaption"></div>
+    <canvas id="timeline" style="width:100%;height:140px"></canvas>
+    <div class="row">
+      <div style="flex:1;min-width:250px">
+        <div class="caption">RMS feature: forecast vs what happened</div>
+        <canvas id="forecast" style="width:100%;height:150px"></canvas>
+      </div>
+      <div style="flex:1;min-width:250px">
+        <div class="caption">Attention each past patch received</div>
+        <canvas id="attention" style="width:100%;height:150px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const D = __DATA__;
+const css = getComputedStyle(document.documentElement);
+const C = name => css.getPropertyValue("--" + name).trim();
+const slider = document.getElementById("t");
+slider.max = D.n - 1;
+slider.value = D.start;
+
+// Canvases are sized when drawn, not once: the frame can be rendered while its tab
+// is hidden (zero size) and only laid out later.
+function setup(id) {
+  const el = document.getElementById(id);
+  return { el, ctx: el.getContext("2d"), w: 0, h: 0 };
+}
+
+function fit(c) {
+  const w = c.el.clientWidth, h = c.el.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (w && h && (w !== c.w || h !== c.h)) {
+    c.el.width = w * dpr; c.el.height = h * dpr;
+    c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.w = w; c.h = h;
+  }
+  return c.w > 0;
+}
+
+function fmtTime(snapshots) {
+  const s = snapshots * D.interval_s;
+  if (s < 60) return s.toFixed(0) + " s";
+  if (s < 3600) return (s / 60).toFixed(1) + " min";
+  if (s < 86400 * 2) return (s / 3600).toFixed(1) + " h";
+  return (s / 86400).toFixed(2) + " days";
+}
+
+function state(t) {
+  if (D.alarm[t]) return { color: C("critical"), label: "Alarm" };
+  const s = D.score[t];
+  if (Number.isFinite(s) && s > 0.6 * D.threshold) return { color: C("warning"), label: "Elevated" };
+  if (!Number.isFinite(s)) return { color: C("muted"), label: "No score yet (warming up)" };
+  return { color: C("good"), label: "Normal" };
+}
+
+// ---------- bearing drawing ----------
+const B = setup("bearing");
+const nElements = D.n_elements || 14;
+let angles = { shaft: 0, cage: 0, spin: 0 };
+let lastFrame = performance.now();
+
+function ring(ctx, cx, cy, r1, r2, fill, stroke) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r2, 0, 2 * Math.PI);
+  ctx.arc(cx, cy, r1, 0, 2 * Math.PI, true);
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = stroke;
+  ctx.beginPath(); ctx.arc(cx, cy, r2, 0, 2 * Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, r1, 0, 2 * Math.PI); ctx.stroke();
+}
+
+function tint(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function glow(ctx, draw, color) {
+  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 18; ctx.strokeStyle = color; ctx.lineWidth = 4;
+  draw(); ctx.restore();
+}
+
+function dominantDefect(t) {
+  if (!D.defects) return null;
+  const v = D.defects[t];
+  let k = 0;
+  for (let i = 1; i < v.length; i++) if (v[i] > v[k]) k = i;
+  return v[k] >= D.defect_highlight ? { index: k, ratio: v[k] } : null;
+}
+
+function drawBearing(t) {
+  if (!fit(B)) return;
+  const { ctx, w, h } = B;
+  ctx.clearRect(0, 0, w, h);
+  const st = state(t);
+  const z = Number.isFinite(D.rmsz[t]) ? D.rmsz[t] : 0;
+  const shake = Math.max(0, Math.min(1, (z - 3) / 30)) * 5;
+  const cx = w / 2 + (Math.random() - 0.5) * 2 * shake, cy = h / 2 + (Math.random() - 0.5) * 2 * shake;
+  const R = { outerOut: 160, outerIn: 134, innerOut: 86, innerIn: 60, pitch: 110, ball: 21 };
+  const scale = (w / 2 - 6) / R.outerOut;
+  for (const k in R) R[k] *= scale;
+  const fill = tint(st.color, 0.18), stroke = st.color;
+  const defect = dominantDefect(t);
+
+  ring(ctx, cx, cy, R.outerIn, R.outerOut, fill, stroke);
+  ring(ctx, cx, cy, R.innerIn, R.innerOut, fill, stroke);
+  // shaft marker, to show the inner ring turning with the shaft
+  ctx.strokeStyle = C("ink2"); ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(angles.shaft) * R.innerIn * 0.2, cy + Math.sin(angles.shaft) * R.innerIn * 0.2);
+  ctx.lineTo(cx + Math.cos(angles.shaft) * R.innerOut, cy + Math.sin(angles.shaft) * R.innerOut);
+  ctx.stroke();
+  // cage
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = C("muted"); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, R.pitch, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+  // rolling elements
+  for (let k = 0; k < nElements; k++) {
+    const a = angles.cage + 2 * Math.PI * k / nElements;
+    const bx = cx + Math.cos(a) * R.pitch, by = cy + Math.sin(a) * R.pitch;
+    ctx.beginPath(); ctx.arc(bx, by, R.ball, 0, 2 * Math.PI);
+    ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(bx + Math.cos(angles.spin) * R.ball * 0.55, by + Math.sin(angles.spin) * R.ball * 0.55, 2.2, 0, 2 * Math.PI);
+    ctx.fillStyle = C("ink2"); ctx.fill();
+  }
+  if (defect) {
+    // dark, so that it stays visible on a red ring during an alarm
+    const color = C("ink");
+    if (defect.index === 0) glow(ctx, () => { ctx.beginPath(); ctx.arc(cx, cy, R.outerIn, 0, 2 * Math.PI); ctx.stroke(); }, color);
+    if (defect.index === 1) glow(ctx, () => { ctx.beginPath(); ctx.arc(cx, cy, R.innerOut, 0, 2 * Math.PI); ctx.stroke(); }, color);
+    if (defect.index === 2) glow(ctx, () => {
+      for (let k = 0; k < nElements; k++) {
+        const a = angles.cage + 2 * Math.PI * k / nElements;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * R.pitch, cy + Math.sin(a) * R.pitch, R.ball, 0, 2 * Math.PI); ctx.stroke();
+      }
+    }, color);
+  }
+  document.getElementById("swatch").style.background = st.color;
+  document.getElementById("stateLabel").textContent = st.label;
+  const parts = ["outer race (BPFO)", "inner race (BPFI)", "rolling elements (BSF)"];
+  document.getElementById("component").textContent = !D.defects ? D.defect_note
+    : defect ? `Envelope energy at the ${parts[defect.index]} frequency is ${defect.ratio.toFixed(1)}x the background. ` + D.defect_note
+    : "No defect frequency stands out in the envelope spectrum. " + D.defect_note;
+}
+
+// ---------- charts ----------
+const TL = setup("timeline"), FC = setup("forecast"), AT = setup("attention");
+const pad = { l: 34, r: 8, t: 6, b: 18 };
+
+function axes(ctx, w, h, ymin, ymax, yTicks) {
+  ctx.strokeStyle = C("grid"); ctx.fillStyle = C("muted"); ctx.lineWidth = 1; ctx.font = "11px system-ui";
+  for (const v of yTicks) {
+    const y = pad.t + (1 - (v - ymin) / (ymax - ymin)) * (h - pad.t - pad.b);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.fillText(String(v), 2, y + 4);
+  }
+}
+
+function drawTimeline(t) {
+  if (!fit(TL)) return;
+  const { ctx, w, h } = TL;
+  ctx.clearRect(0, 0, w, h);
+  const finite = D.score.filter(Number.isFinite);
+  const ymax = Math.max(D.threshold * 2, Math.min(Math.max(...finite), D.threshold * 6));
+  const ymin = Math.min(-2, Math.min(...finite));
+  const X = i => pad.l + i / (D.n - 1) * (w - pad.l - pad.r);
+  const Y = v => pad.t + (1 - (Math.max(ymin, Math.min(ymax, v)) - ymin) / (ymax - ymin)) * (h - pad.t - pad.b);
+  ctx.fillStyle = C("healthy-shade"); ctx.fillRect(X(0), pad.t, X(D.healthy_end) - X(0), h - pad.t - pad.b);
+  ctx.fillStyle = C("alarm-shade");
+  for (let i = 0; i < D.n; i++) if (D.alarm[i]) ctx.fillRect(X(i), pad.t, Math.max(1, X(i + 1) - X(i)), h - pad.t - pad.b);
+  axes(ctx, w, h, ymin, ymax, [0, Math.round(D.threshold)]);
+  ctx.strokeStyle = C("blue"); ctx.lineWidth = 1.2; ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < D.n; i++) {
+    if (!Number.isFinite(D.score[i])) { started = false; continue; }
+    started ? ctx.lineTo(X(i), Y(D.score[i])) : ctx.moveTo(X(i), Y(D.score[i]));
+    started = true;
+  }
+  ctx.stroke();
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = C("ink2"); ctx.beginPath();
+  ctx.moveTo(pad.l, Y(D.threshold)); ctx.lineTo(w - pad.r, Y(D.threshold)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = C("ink"); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(t), pad.t); ctx.lineTo(X(t), h - pad.b); ctx.stroke();
+  ctx.fillStyle = C("muted"); ctx.fillText("start", pad.l, h - 4); ctx.fillText("end of test", w - pad.r - 62, h - 4);
+}
+
+function drawForecast(t) {
+  if (!fit(FC)) return;
+  const { ctx, w, h } = FC;
+  ctx.clearRect(0, 0, w, h);
+  const s = t - D.window;
+  if (s < 0 || s >= D.forecast.length) {
+    ctx.fillStyle = C("muted"); ctx.font = "12px system-ui";
+    ctx.fillText(s < 0 ? `The model needs ${D.window} snapshots of history (${fmtTime(D.window)}).` : "No later snapshots to compare with.", 8, h / 2);
+    return;
+  }
+  const past = D.rmsz.slice(s, t), actual = D.rmsz.slice(t, t + D.horizon), forecast = D.forecast[s];
+  const all = past.concat(actual, forecast).filter(Number.isFinite);
+  let ymin = Math.min(...all), ymax = Math.max(...all);
+  const span = Math.max(ymax - ymin, 1); ymin -= 0.1 * span; ymax += 0.1 * span;
+  const total = D.window + D.horizon;
+  const X = i => pad.l + i / (total - 1) * (w - pad.l - pad.r);
+  const Y = v => pad.t + (1 - (v - ymin) / (ymax - ymin)) * (h - pad.t - pad.b);
+  axes(ctx, w, h, ymin, ymax, [Math.round(ymin + 0.1 * span), Math.round(ymax - 0.1 * span)]);
+  const line = (values, offset, color, width) => {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+    values.forEach((v, i) => i ? ctx.lineTo(X(offset + i), Y(v)) : ctx.moveTo(X(offset + i), Y(v)));
+    ctx.stroke();
+  };
+  line(past, 0, C("muted"), 1);
+  line(actual, D.window, C("blue"), 1.6);
+  line(forecast, D.window, C("orange"), 1.6);
+  ctx.strokeStyle = C("ink2"); ctx.setLineDash([2, 3]); ctx.beginPath();
+  ctx.moveTo(X(D.window), pad.t); ctx.lineTo(X(D.window), h - pad.b); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = "11px system-ui";
+  [["past window", C("muted")], ["actual", C("blue")], ["forecast", C("orange")]].forEach(([label, color], i) => {
+    const x = pad.l + 4 + i * 80;
+    ctx.fillStyle = color; ctx.fillRect(x, pad.t + 4, 12, 2);
+    ctx.fillStyle = C("ink2"); ctx.fillText(label, x + 16, pad.t + 9);
+  });
+}
+
+function drawAttention(t) {
+  if (!fit(AT)) return;
+  const { ctx, w, h } = AT;
+  ctx.clearRect(0, 0, w, h);
+  const s = t - D.window;
+  if (s < 0 || s >= D.attention.length) return;
+  const a = D.attention[s];
+  const amax = Math.max(...a, 1.5 / a.length);
+  const X = x => pad.l + x / D.window * (w - pad.l - pad.r);
+  axes(ctx, w, h, 0, amax, []);
+  ctx.fillStyle = C("blue");
+  D.patch_spans.forEach(([start, stop], i) => {
+    const bh = a[i] / amax * (h - pad.t - pad.b);
+    const x0 = X((start + stop) / 2) - (X(D.stride) - X(0)) * 0.4;
+    ctx.fillRect(x0, h - pad.b - bh, (X(D.stride) - X(0)) * 0.8, bh);
+  });
+  ctx.strokeStyle = C("ink2"); ctx.setLineDash([3, 3]);
+  const even = h - pad.b - (1 / a.length) / amax * (h - pad.t - pad.b);
+  ctx.beginPath(); ctx.moveTo(pad.l, even); ctx.lineTo(w - pad.r, even); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = C("muted"); ctx.font = "11px system-ui";
+  ctx.fillText(`-${fmtTime(D.window)}`, pad.l, h - 4);
+  ctx.fillText("now", w - pad.r - 22, h - 4);
+  ctx.fillText("dashed: equal attention", pad.l + 4, pad.t + 10);
+}
+
+function render() {
+  const t = Number(slider.value);
+  document.getElementById("since").textContent = fmtTime(t);
+  document.getElementById("toEnd").textContent = fmtTime(D.n - 1 - t);
+  document.getElementById("score").textContent = Number.isFinite(D.score[t]) ? D.score[t].toFixed(1) : "-";
+  document.getElementById("thr").textContent = D.threshold.toFixed(1);
+  document.getElementById("timelineCaption").textContent =
+    `${D.method_label}: anomaly score over the whole life, threshold at ${D.rate_label} false alarms`;
+  drawTimeline(t); drawForecast(t); drawAttention(t);
+}
+
+let playing = false, lastStep = 0;
+document.getElementById("play").onclick = () => {
+  playing = !playing;
+  document.getElementById("play").textContent = playing ? "Pause" : "Play";
+  if (playing && Number(slider.value) >= D.n - 1) slider.value = 0;
+};
+slider.oninput = render;
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  // real rotation slowed 60 times; the cage and the balls keep their true speed ratios
+  const shaftHz = D.rpm / 60 / 60;
+  angles.shaft += 2 * Math.PI * shaftHz * dt;
+  angles.cage += 2 * Math.PI * shaftHz * D.cage_ratio * dt;
+  angles.spin += 2 * Math.PI * shaftHz * D.spin_ratio * dt;
+  if (playing && now - lastStep > 120) {
+    lastStep = now;
+    const next = Math.min(D.n - 1, Number(slider.value) + Number(document.getElementById("speed").value));
+    slider.value = next;
+    render();
+    if (next >= D.n - 1) { playing = false; document.getElementById("play").textContent = "Play"; }
+  }
+  drawBearing(Number(slider.value));
+  requestAnimationFrame(frame);
+}
+new ResizeObserver(render).observe(document.body);
+render();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
